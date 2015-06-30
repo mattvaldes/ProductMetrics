@@ -13,29 +13,8 @@ import sqlite3
 import glob
 import xlsxwriter
 from datetime import datetime
+import ConfigParser
 
-# standard headers required by Defect Dojo
-headers = {'content-type': 'application/json',
-            'Authorization': 'ApiKey USERNAME:KEY'}
-
-# Defect Dojo urls
-# Defect Dojo url for products
-product_url = 'https://DEFECT_DOJO/api/v1/products/'
-# Defect Dojo url for findings
-finding_url = 'https://DEFECT_DOJO)/api/v1/findings/'
-
-# External mapping file with product names and owners.
-# update this with any changes
-mapping_file_name = 'FILE_NAME.csv'
-# database file created using the mapping file 
-# product id, name + dept owners
-database_file_name = 'FILE_NAME.db'
-
-# Worksheet and Workbook names
-# The date will be appended to these strings
-finding_report_sheet = 'FINDINGS_WORKSHEET_NAME'
-metrics_report_sheet = 'METRICS_WORKSHEET_NAME'
-metrics_spreadsheet = 'WORKBOOK_NAME'
 
 def get_number_products(url, headers):
     """
@@ -248,22 +227,30 @@ def create_metrics_report(findings):
     #f.close
     return report
 
-def create_report(product_url, headers, database_file_name, mapping_file_name, finding_url, report_name, finding_sheet_name, metric_sheet_name):
+def create_report():
+    config = ConfigParser.ConfigParser()
+    config.read("./config.ini")
+    headers = {'content-type': config.get("header","contenttype"),
+            'Authorization': config.get("header","Authorization")} 
     # get total number of products from dojo
+    product_url = config.get("url", "product")
     num_products = get_number_products(product_url, headers)
     # set limit parameter to the total number of products 
     limit_parameter = '?limit={0}'.format(num_products)
     # get list of all products from dojo
     system_product_list = create_system_product_list(product_url, limit_parameter, headers)
     # create the products and owners database
+    database_file_name = config.get("file", "database")
     database_file = create_product_db(database_file_name)
     # populate the database with product info
     full_database = populate_db_products(system_product_list, database_file_name)
     # this returns the products database in a list of tuples.
     db_product_list = read_db_products(database_file_name)
     # add owners to the database from a mapping CSV file
+    mapping_file_name = config.get("file", "mapping")
     pop = populate_db_owners(database_file_name, mapping_file_name)
     # get total number of findings from dojo
+    finding_url = config.get("url", "finding")
     findings_total = get_number_findings(finding_url, headers)
     # create parameter to allow all S0 & S1 findings to be returned in one call
     finding_parameter = '?active=true&verified=true&severity__in=Critical,High&limit={0}'.format(findings_total)
@@ -271,20 +258,31 @@ def create_report(product_url, headers, database_file_name, mapping_file_name, f
     all_findings = create_system_finding_list(finding_url, finding_parameter, headers)
     all_findings.sort()
     today = str(datetime.now().date())
+    report_name = config.get("file", "spreadsheet")
     full_report_name = report_name + '_' + today
     workbook = xlsxwriter.Workbook(full_report_name + '.xlsx')
+    # create report header formatting
+    # white font; red background
     ws_format = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#800000'})
+    # create date column format for report
     date_format = workbook.add_format({'num_format': 'mmm dd, yyyy'})
+    # start first worksheet for findings report
+    finding_sheet_name = config.get("file", "finding")
     f_sheet = workbook.add_worksheet(finding_sheet_name)
+    # set column widths for report
+    # column start, column stop, width
     f_sheet.set_column(0, 0, 22)
     f_sheet.set_column(1, 1, 80)
     f_sheet.set_column(2, 2, 13)
     f_sheet.set_column(3, 4, 8)
+    # create column headers
     f_sheet.write('A1', 'Product', ws_format)
     f_sheet.write('B1', 'Title of Finding', ws_format)
     f_sheet.write('C1', 'Identified Date', ws_format)
     f_sheet.write('D1', 'Severity', ws_format)
     f_sheet.write('E1', 'Age (days)', ws_format)
+    # increment data fields through worksheet
+    # start row at 1 to leave the headers we created
     row = 1
     col = 0
     findings_finding_list = group_findings(db_product_list, all_findings)
@@ -296,17 +294,24 @@ def create_report(product_url, headers, database_file_name, mapping_file_name, f
         f_sheet.write(row, col + 3, findings_finding_list[index].split(',')[3])
         f_sheet.write_number(row, col + 4, int(findings_finding_list[index].split(',')[4]))
         row += 1
+    # start second worksheet for metrics report
+    metric_sheet_name = config.get("file", "metrics")
     m_sheet = workbook.add_worksheet(metric_sheet_name)
+    # set column widths for report
+    # column start, column stop, width
     m_sheet.set_column(0, 0, 26)
     m_sheet.set_column(1, 2, 15)
     m_sheet.set_column(3, 3, 8)
     m_sheet.set_column(4, 5, 16)
+    # create column headers
     m_sheet.write('A1', 'Product', ws_format)
     m_sheet.write('B1', 'Dev Mgr', ws_format)
     m_sheet.write('C1', 'QE Mgr', ws_format)
     m_sheet.write('D1', 'SE Mgr', ws_format)
     m_sheet.write('E1', 'Number of Active S0', ws_format)
     m_sheet.write('F1', 'Number of Active S1', ws_format)
+    # increment data fields through worksheet
+    # start row at 1 to leave the headers we created
     row = 1
     col = 0
     m_findings = count_findings(db_product_list, all_findings)
@@ -325,7 +330,5 @@ def create_report(product_url, headers, database_file_name, mapping_file_name, f
     return workbook_name
 
 # Create finished XLS report
-metrics_report = create_report(product_url, headers, database_file_name, \
-                                mapping_file_name, finding_url, metrics_spreadsheet, \
-                                finding_report_sheet, metrics_report_sheet)
+metrics_report = create_report()
 print 'Report {0} created.'.format(metrics_report)
