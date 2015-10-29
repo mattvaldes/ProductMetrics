@@ -1,6 +1,6 @@
 """
 This script interacts with Defect Dojo products and findings API.
-This data is correlated with an external file (CSV) to allow 
+This data is correlated with an external file (CSV) to allow
 mapping of products to their owners.
 One Excel file is created with two worksheets:
 1. All S0 and S1 findings
@@ -8,7 +8,6 @@ One Excel file is created with two worksheets:
 """
 
 import requests
-import json
 import sqlite3
 import glob
 import xlsxwriter
@@ -18,12 +17,12 @@ import ConfigParser
 
 def get_number_products(url, headers):
     """
-    initial API call to get total number of products 
+    initial API call to get total number of products
     should using paging someday instead.
     """
-    r = requests.get(url,headers=headers) 
+    r = requests.get(url, headers=headers)
     product_data = r.json()
-    # grab the total number of products 
+    # grab the total number of products
     for key, val in product_data.items():
         if key == 'meta':
             product_data_count = val['total_count']
@@ -34,7 +33,7 @@ def create_system_product_list(url, url_parameters, headers):
     second call to retrieve full list of product names and ids
     returns dictionary of product id and product name
     """
-    r = requests.get(url+url_parameters, headers=headers) 
+    r = requests.get(url+url_parameters, headers=headers)
     data = r.json()
     # loop through product list to get names and ids
     for key, val in data.items():
@@ -57,14 +56,14 @@ def create_product_db(file_name):
         conn = sqlite3.connect(file_name)
         curs = conn.cursor()
         curs.execute('''CREATE TABLE products
-                     (id integer primary key, dojo_id, dojo_name, dev_mgr, qe_mgr, se_team)''') 
+                     (id integer primary key, dojo_id, dojo_name, dev_mgr, qe_mgr, se_team)''')
         conn.commit()
         conn.close()
     return True
 
 def populate_db_products(product_dictionary, file_name):
     """
-    insert product data into database from dojo product url 
+    insert product data into database from dojo product url
     """
     conn = sqlite3.connect(file_name)
     curs = conn.cursor()
@@ -82,6 +81,7 @@ def populate_db_products(product_dictionary, file_name):
                 if key in db_row:
                     break
             else:
+                print '{0} not found in {1}'.format(key, db_row)
                 print 'Inserting new product: {0}'.format(value)
                 curs.execute("INSERT INTO products(dojo_id, dojo_name) VALUES (?, ?)", (key, value))
     conn.commit()
@@ -108,14 +108,13 @@ def populate_db_owners(database_file, owners_file):
                 dev = line.split(',')[1].replace('\n', '')
                 qe = line.split(',')[2].replace('\n', '')
                 se = line.split(',')[3].replace('\n', '')
-                #print ' Inserting data {0} : {1} : {2} : {3} : {4}'.format(row[2], product_id, dev, qe, se)
                 curs2.execute("UPDATE products SET dev_mgr = ?, qe_mgr = ?, se_team = ? \
                                 WHERE dojo_id = ?", (dev, qe, se, product_id))
         f.seek(0)
     conn.commit()
     conn.close()
     print 'Read {0} owners from {1}. Database updated with any changes.'.format(cnt, owners_file)
-    return True   
+    return True
 
 def read_db_products(file_name):
     """
@@ -140,12 +139,12 @@ def compare_system_db_products(system_list, db_list):
         print 'No product changes detected'
         # TO DO:
         # Actually compare list by product ID and
-        # check for name changes or 
+        # check for name changes or
         # additions + removals
     else:
         print 'New products found!'
-        # TO DO: 
-        # find the new products and 
+        # TO DO:
+        # find the new products and
         # load them into database
 
 def get_number_findings(url, headers):
@@ -153,9 +152,9 @@ def get_number_findings(url, headers):
     API call to get number of findings
     should use paging instead.
     """
-    r = requests.get(url,headers=headers) 
+    r = requests.get(url, headers=headers)
     finding_data = r.json()
-    # grab the total number of findings 
+    # grab the total number of findings
     for key, val in finding_data.items():
         if key == 'meta':
             finding_data_count = val['total_count']
@@ -166,20 +165,25 @@ def create_system_finding_list(url, url_parameters, headers):
     call to retrieve full list of findings
     returns list of dictionaries (json)
     """
-    r = requests.get(url+url_parameters, headers=headers) 
+    r = requests.get(url+url_parameters, headers=headers)
     data = r.json()
     # loop through finding list to get info
     for key, val in data.items():
         if key == 'objects':
             findings = []
             for i in range(len(val)):
-                findings.append({'title':val[i]['title'],
-                                'severity': val[i]['numerical_severity'],
-                                'product' : val[i]['product'],
-                                'date' : val[i]['date']})
+                finding_title = val[i]['title'].strip()
+                finding_severity = val[i]['numerical_severity'].strip()
+                finding_product = val[i]['product'].strip()
+                finding_date = str(datetime.strptime(val[i]['date'], "%Y-%m-%d").date())
+                findings.append({'title':finding_title,
+                                 'severity': finding_severity,
+                                 'product' : finding_product,
+                                 'date' : finding_date})
             return findings
 
 def group_findings(product_list, finding_list):
+
     """
     group findings by product
     return list of finding data as strings
@@ -187,73 +191,98 @@ def group_findings(product_list, finding_list):
     today = datetime.today()
     report = []
     for k in range(len(product_list)):
-#       print product_list[k][1]
         for j in range(len(finding_list)):
-            #for keyJ, valJ in finding_list[j].items():
             if str(product_list[k][1]) in finding_list[j]['product']:
-                    report.append('{0},{1},{2},{3},{4}'.format(product_list[k][2], finding_list[j]['title'], \
-                                    finding_list[j]['date'], finding_list[j]['severity'], \
-                                    (today - datetime.strptime(finding_list[j]['date'], '%Y-%m-%d')).days ))
+                #try:
+                report.append('{0}, {1}, {2}, {3}, {4}'
+                              .format(product_list[k][2],
+                                      finding_list[j]['title'],
+                                      finding_list[j]['date'],
+                                      finding_list[j]['severity'],
+                                      (today - datetime.strptime(finding_list[j]['date'],
+                                                                 '%Y-%m-%d')).days))
+                #except AttributeError, e:
+                #    e = finding_list[j]
+                #    print e
+
     return report
 
 def count_findings(product_list, finding_list):
     """
     count S0 & S1 findings by product
-    return list of dictionaries 
+    return list of dictionaries
     """
     report = []
     for k in range(len(product_list)):
-        report.append({product_list[k][1] : {'S0' : 0, 'S1' : 0, 'name' : product_list[k][2], \
-                                                'dev' : product_list[k][3], 'qe' : product_list[k][4], \
-                                                'se' : product_list[k][5]}})
+        report.append({product_list[k][1] : {'S0' : 0,
+                                             'S1' : 0,
+                                             'S2' : 0,
+                                             'S3' : 0,
+                                             'S4' : 0,
+                                             'name' : product_list[k][2],
+                                             'dev' : product_list[k][3],
+                                             'qe' : product_list[k][4],
+                                             'se' : product_list[k][5]}})
         for j in range(len(finding_list)):
             #for keyJ, valJ in finding_list[j].items():
             if str(product_list[k][1]) in finding_list[j]['product']:
                 if finding_list[j]['severity'] == 'S0':
                     report[k][product_list[k][1]]['S0'] += 1
-                else:
+                if finding_list[j]['severity'] == 'S1':
                     report[k][product_list[k][1]]['S1'] += 1
+                if finding_list[j]['severity'] == 'S2':
+                    report[k][product_list[k][1]]['S2'] += 1
+                if finding_list[j]['severity'] == 'S3':
+                    report[k][product_list[k][1]]['S3'] += 1
+                else:
+                    report[k][product_list[k][1]]['S4'] += 1
     return report
 
 def create_metrics_report(findings):
     """
-    returns list of products with totalled S0 & S1 - as strings 
+    returns list of products with totalled S0 & S1 - as strings
     """
     report = []
     for x in range(len(findings)):
         for key, val in findings[x].items():
-            line = '{0},{1},{2},{3},{4},{5}'.format(val['name'],val['dev'],val['qe'],val['se'],val['S0'],val['S1'])
+            line = '{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}' \
+                    .format(val['name'], val['dev'], val['qe'], val['se'],
+                            val['S0'], val['S1'], val['S2'], val['S3'], val['S4'])
             report.append(line)
     #f.close
     return report
 
 def create_report():
+    """
+    creates the report spreadsheets
+    """
     config = ConfigParser.ConfigParser()
     config.read("./config.ini")
-    headers = {'content-type': config.get("header","contenttype"),
-            'Authorization': config.get("header","Authorization")} 
+    headers = {'content-type': config.get("header", "contenttype"),
+               'Authorization': config.get("header", "Authorization")}
     # get total number of products from dojo
     product_url = config.get("url", "product")
     num_products = get_number_products(product_url, headers)
-    # set limit parameter to the total number of products 
+    # set limit parameter to the total number of products
     limit_parameter = '?limit={0}'.format(num_products)
     # get list of all products from dojo
     system_product_list = create_system_product_list(product_url, limit_parameter, headers)
     # create the products and owners database
     database_file_name = config.get("file", "database")
-    database_file = create_product_db(database_file_name)
+    create_product_db(database_file_name)
     # populate the database with product info
-    full_database = populate_db_products(system_product_list, database_file_name)
+    populate_db_products(system_product_list, database_file_name)
     # this returns the products database in a list of tuples.
     db_product_list = read_db_products(database_file_name)
     # add owners to the database from a mapping CSV file
     mapping_file_name = config.get("file", "mapping")
-    pop = populate_db_owners(database_file_name, mapping_file_name)
+    populate_db_owners(database_file_name, mapping_file_name)
     # get total number of findings from dojo
     finding_url = config.get("url", "finding")
     findings_total = get_number_findings(finding_url, headers)
     # create parameter to allow all S0 & S1 findings to be returned in one call
-    finding_parameter = '?active=true&verified=true&severity__in=Critical,High&limit={0}'.format(findings_total)
+    finding_parameter = '?active=true&verified=true&severity__in=Critical,High&limit={0}'\
+                         .format(findings_total)
     # get list of dicts - all S0 & S1 findings in dojo.
     all_findings = create_system_finding_list(finding_url, finding_parameter, headers)
     all_findings.sort()
@@ -289,7 +318,7 @@ def create_report():
     for index in range(len(findings_finding_list)):
         f_sheet.write(row, col, findings_finding_list[index].split(',')[0])
         f_sheet.write(row, col + 1, findings_finding_list[index].split(',')[1])
-        age = datetime.strptime(findings_finding_list[index].split(',')[2], '%Y-%m-%d')
+        age = datetime.strptime(findings_finding_list[index].split(', ')[2], '%Y-%m-%d')
         f_sheet.write_datetime(row, col + 2, age, date_format)
         f_sheet.write(row, col + 3, findings_finding_list[index].split(',')[3])
         f_sheet.write_number(row, col + 4, int(findings_finding_list[index].split(',')[4]))
