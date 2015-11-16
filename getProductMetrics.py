@@ -103,7 +103,7 @@ def populate_db_owners(database_file, owners_file):
             if str(row[2]) in line.split(',')[0]:
                 curs2 = conn.cursor()
                 cnt += 1
-                #print '{0} was found in {1}! Inserting into database'.format(row[2], line)
+                print '{0} was found in {1}! Inserting into database'.format(row[2], line)
                 product_id = row[1]
                 dev = line.split(',')[1].replace('\n', '')
                 qe = line.split(',')[2].replace('\n', '')
@@ -281,7 +281,7 @@ def create_report():
     finding_url = config.get("url", "finding")
     findings_total = get_number_findings(finding_url, headers)
     # create parameter to allow all S0 & S1 findings to be returned in one call
-    finding_parameter = '?active=true&verified=true&severity__in=Critical,High&limit={0}'\
+    finding_parameter = '?active=true&verified=true&severity__in=Critical,High,Medium,Low,Info&limit={0}'\
                          .format(findings_total)
     # get list of dicts - all S0 & S1 findings in dojo.
     all_findings = create_system_finding_list(finding_url, finding_parameter, headers)
@@ -331,7 +331,7 @@ def create_report():
     m_sheet.set_column(0, 0, 26)
     m_sheet.set_column(1, 2, 15)
     m_sheet.set_column(3, 3, 8)
-    m_sheet.set_column(4, 5, 16)
+    m_sheet.set_column(4, 8, 16)
     # create column headers
     m_sheet.write('A1', 'Product', ws_format)
     m_sheet.write('B1', 'Dev Mgr', ws_format)
@@ -339,6 +339,9 @@ def create_report():
     m_sheet.write('D1', 'SE Mgr', ws_format)
     m_sheet.write('E1', 'Number of Active S0', ws_format)
     m_sheet.write('F1', 'Number of Active S1', ws_format)
+    m_sheet.write('G1', 'Number of Active S2', ws_format)
+    m_sheet.write('H1', 'Number of Active S3', ws_format)
+    m_sheet.write('I1', 'Number of Active S4', ws_format)
     # increment data fields through worksheet
     # start row at 1 to leave the headers we created
     row = 1
@@ -353,6 +356,8 @@ def create_report():
         m_sheet.write(row, col + 3, metrics_finding_list[index].split(',')[3])
         m_sheet.write_number(row, col + 4, int(metrics_finding_list[index].split(',')[4]))
         m_sheet.write_number(row, col + 5, int(metrics_finding_list[index].split(',')[5]))
+        m_sheet.write_number(row, col + 6, int(metrics_finding_list[index].split(',')[6]))
+        m_sheet.write_number(row, col + 7, int(metrics_finding_list[index].split(',')[5]))
         row += 1
     workbook.close()
     workbook_name = full_report_name + '.xlsx'
